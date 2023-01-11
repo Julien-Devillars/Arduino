@@ -1,4 +1,5 @@
 #include <LedControl.h>
+#include <IRremote.h>
 
 int DIN = 12;
 int CS = 11;
@@ -7,6 +8,7 @@ int CLK = 10;
 const int joyX = A0;
 const int joyY = A1;
 const int joyButton = 13;
+const int REMOTE_PIN = 8;
 
 LedControl lc=LedControl(DIN, CLK, CS,0);
 
@@ -14,7 +16,8 @@ typedef enum Direction{
   Top = 0, 
   Right = 1, 
   Bottom = 2, 
-  Left = 3} ;
+  Left = 3,
+  Default} ;
 
 struct Point
 {
@@ -100,7 +103,7 @@ struct Snake
 
 struct Gameboard
 {
-  const int FRAME_RATE = 100;
+  int FRAME_RATE = 100;
   const int SIZE = 8;
   Point current_point;
   Snake snake;
@@ -164,6 +167,21 @@ struct Gameboard
       }
     }
   }
+  void slower()
+  {
+    FRAME_RATE+=20;
+    Serial.print("Current Frame Rate :");
+    Serial.println(FRAME_RATE);
+  }
+  void faster()
+  {
+    if(FRAME_RATE-20>0)
+    {
+      FRAME_RATE-=20;
+    }
+    Serial.print("Current Frame Rate :");
+    Serial.println(FRAME_RATE);
+  }
 
 };
 
@@ -177,53 +195,105 @@ void setup()
   Serial.begin(9600);
 
   pinMode(joyButton, INPUT_PULLUP); 
+  IrReceiver.begin(REMOTE_PIN);
   
   board.setNewPoint();
 }
+const int NB_CONTROL_VALUES = 10;
+#define IR_BUTTON_2 24
+#define IR_BUTTON_4 8
+#define IR_BUTTON_6 90
+#define IR_BUTTON_8 82
+#define IR_SLOWER 68
+#define IR_FASTER 67
+#define IR_PLAY_PAUSE 64
+//#define IR_BUTTON_PLAY_PAUSE 64
+//int correspond_remote_value[NB_CONTROL_VALUES] = {22, 25, 13, 8, 28, 90, 66, 82, 74} ;
+//int correspond_user_value[NB_CONTROL_VALUES]   = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9} ;
 
-int cpt = 0;
 Direction current_direction = Left;
+bool is_paused = false;
 void loop() 
 {
-  bool getLeft = digitalRead(LeftButton);
-  bool getTop = digitalRead(UpButton);
-  bool getRight = digitalRead(RightButton);
-  bool getDown = digitalRead(DownButton);
-  
-  int X = 0;
-  int Y = 0;
-  X = analogRead(joyX);
-  Y = analogRead(joyY);
-  Serial.println(X);
-  Serial.println(Y);
-  if(X > 750 || X < 250 || Y > 750 || Y < 250 )
+  bool faster = false;
+  bool slower = false;
+  Direction new_direction;
+
+  if (IrReceiver.decode()) 
   {
-    if(X < 250 && current_direction != Bottom)
+    IrReceiver.resume();
+    int command = IrReceiver.decodedIRData.command;
+    Serial.println(command);
+
+    new_direction = Default;
+
+    switch (command) 
     {
-      current_direction = Top;
+      case IR_BUTTON_2: 
+        Serial.println("Top");
+        new_direction = Top;
+        break;
+      case IR_BUTTON_4: 
+        Serial.println("Left");
+        new_direction = Left;
+        break;
+      case IR_BUTTON_6: 
+        Serial.println("Right");
+        new_direction = Right;
+        break;
+      case IR_BUTTON_8: 
+        Serial.println("Bottom");
+        new_direction = Bottom;
+        break;
+      case IR_SLOWER: 
+        slower = true;
+        Serial.println("Pressed on button Slower");
+        break;
+      case IR_FASTER: 
+        faster = true;
+        Serial.println("Pressed on button Faster");
+        break;
+      case IR_PLAY_PAUSE: 
+        Serial.println("Pressed on button Pause");
+        is_paused = !is_paused;
+        break;
+      default:
+        break;
+        
+      
     }
-    else if(X > 750 && current_direction != Top)
-    {
-      current_direction = Bottom;
-    }
-    else if(Y < 250 && current_direction != Left)
-    {
-      current_direction = Right;
-    }
-    else if(Y > 750 && current_direction != Right)
-    {
-      current_direction = Left;
-    }
-  }
-  
-  else
-  {
-    Serial.println("test");
   }
 
-  // put your main code here, to run repeatedly:
+  if(new_direction == Top && current_direction != Bottom)
+  {
+    current_direction = new_direction;
+  }
+  else if(new_direction == Left && current_direction != Right)
+  {
+    current_direction = new_direction;
+  }
+  else if(new_direction == Right && current_direction != Left)
+  {
+    current_direction = new_direction;
+  }
+  else if(new_direction == Bottom && current_direction != Top)
+  {
+    current_direction = new_direction;
+  }
+
+  if(slower)
+  {
+    board.slower();
+  }
+  if(faster)
+  {
+    board.faster();
+  }
   board.run();
-  
-  board.action(current_direction);
+
+  if(!is_paused)
+  {
+    board.action(current_direction);
+  }
 
 }
